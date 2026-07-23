@@ -1,0 +1,122 @@
+// Forge Protocol — core data models (MVP)
+// Principle: log what the user already does. Never prescribe doses/protocols.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Clean user accounts
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  weightUnit   String   @default("lb") // "lb" | "kg"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trainingLogs TrainingLog[]
+  bodyMetrics  BodyMetric[]
+  supplements  SupplementLog[]
+  compounds    CompoundLog[]
+  notes        Note[]
+  reminders    Reminder[]
+  chatMessages ChatMessage[]
+}
+
+/// Training session logs
+model TrainingLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date          DateTime
+  title         String
+  durationMin   Int?
+  notes         String?
+  exercisesJson String   @default("[]")
+  createdAt     DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// Body metrics (MVP: bodyweight; extensible later)
+model BodyMetric {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  weight    Float
+  unit      String   @default("lb")
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// Supplement self-logs (free-text amount notes only — not prescriptions)
+model SupplementLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime
+  name       String
+  amountNote String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// Compound self-logs only. App never recommends compounds or doses.
+model CompoundLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  name      String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// Free-form notes (recovery, sleep, stress, etc.)
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// Simple local-hour reminders (MVP: in-app schedule markers)
+model Reminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  hourLocal Int
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Lightweight AI chat history (educational / organizational only)
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
