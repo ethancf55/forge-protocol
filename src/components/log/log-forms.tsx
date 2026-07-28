@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { LogEducationBriefing } from "@/components/education/log-education-briefing";
 import { formatDateInput } from "@/lib/utils";
 import {
   addBodyweight,
@@ -12,7 +13,9 @@ import {
   addNote,
   addSupplement,
   addWorkout,
+  type LogActionResult,
 } from "@/app/actions/logs";
+import type { EducationBriefing } from "@/lib/education/classify";
 
 const tabs = [
   { id: "training", label: "Training" },
@@ -30,18 +33,71 @@ export function LogForms() {
   const raw = search.get("tab") || "training";
   const tab = (tabs.some((t) => t.id === raw) ? raw : "training") as TabId;
   const [pending, start] = useTransition();
+  const [status, setStatus] = useState<string | null>(null);
+  const [statusKind, setStatusKind] = useState<"ok" | "err">("ok");
+  const [briefing, setBriefing] = useState<EducationBriefing | null>(null);
+  const [educationHref, setEducationHref] = useState<string | null>(null);
   const today = formatDateInput();
 
   function setTab(id: TabId) {
+    setStatus(null);
+    setBriefing(null);
+    setEducationHref(null);
     router.replace(`/log?tab=${id}`);
   }
 
-  function run(action: (fd: FormData) => Promise<void>, form: HTMLFormElement) {
+  function run(
+    action: (fd: FormData) => Promise<LogActionResult>,
+    form: HTMLFormElement
+  ) {
     const fd = new FormData(form);
     start(async () => {
-      await action(fd);
-      form.reset();
-      router.refresh();
+      setStatus(null);
+      setBriefing(null);
+      setEducationHref(null);
+      try {
+        const result = await action(fd);
+
+        if (!result?.ok) {
+          setStatusKind("err");
+          setStatus(
+            result?.error ||
+              "Could not save. If this keeps happening, sign out and sign in again."
+          );
+          return;
+        }
+
+        form.reset();
+        const dateInput = form.querySelector<HTMLInputElement>(
+          'input[name="date"]'
+        );
+        if (dateInput) dateInput.value = today;
+
+        setStatusKind("ok");
+        router.refresh();
+
+        if (result.educationBriefing) {
+          setBriefing(result.educationBriefing);
+          setEducationHref(result.educationHref || null);
+          setStatus("Saved. Educational briefing ready below.");
+          return;
+        }
+
+        if (result.educationHref) {
+          setEducationHref(result.educationHref);
+          setStatus("Saved.");
+          return;
+        }
+
+        setStatus("Saved. Check History to confirm.");
+      } catch (err) {
+        setStatusKind("err");
+        setStatus(
+          err instanceof Error
+            ? err.message
+            : "Something went wrong. Try signing out and back in."
+        );
+      }
     });
   }
 
@@ -63,6 +119,33 @@ export function LogForms() {
           </button>
         ))}
       </div>
+
+      {status ? (
+        <p
+          className={`rounded-xl border px-3 py-2 text-xs ${
+            statusKind === "err"
+              ? "border-red-500/30 bg-red-500/10 text-red-200"
+              : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+          }`}
+        >
+          {status}
+          {statusKind === "err" && status.toLowerCase().includes("session") ? (
+            <>
+              {" "}
+              <a href="/login?reason=stale" className="underline">
+                Sign in again
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+
+      {briefing ? (
+        <LogEducationBriefing
+          briefing={briefing}
+          educationHref={educationHref}
+        />
+      ) : null}
 
       {tab === "training" && (
         <Card>
@@ -150,8 +233,12 @@ export function LogForms() {
             <Field label="Notes">
               <Textarea name="notes" placeholder="Timing, brand, context…" />
             </Field>
+            <p className="text-[11px] leading-relaxed text-zinc-500">
+              Saves to History, then surfaces a smart educational briefing and
+              related guides. No dosing. Not medical advice.
+            </p>
             <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Saving…" : "Save supplement"}
+              {pending ? "Saving & analyzing…" : "Save supplement"}
             </Button>
           </form>
         </Card>
@@ -161,8 +248,8 @@ export function LogForms() {
         <Card className="space-y-3">
           <div className="rounded-xl border border-orange-500/25 bg-orange-500/10 px-3 py-2.5 text-xs leading-relaxed text-orange-100/90">
             <strong className="font-semibold text-orange-300">Self-report only.</strong> Log what you
-            already use for your own history. Forge Protocol never recommends compounds, doses, stacks,
-            sources, or protocols.
+            already use for your own history. After save, the app surfaces educational
+            context (class, A:A when known, related guides). Never dosing or protocols.
           </div>
           <form
             className="space-y-3"
@@ -175,13 +262,17 @@ export function LogForms() {
               <Input name="date" type="date" defaultValue={today} required />
             </Field>
             <Field label="Name (your label)">
-              <Input name="name" placeholder="Your entry label" required />
+              <Input
+                name="name"
+                placeholder="e.g. Testosterone, Masteron, Winstrol…"
+                required
+              />
             </Field>
             <Field label="Notes (no protocol design)">
               <Textarea name="notes" placeholder="Context for your records only…" />
             </Field>
             <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Saving…" : "Save compound log"}
+              {pending ? "Saving & analyzing…" : "Save compound log"}
             </Button>
           </form>
         </Card>

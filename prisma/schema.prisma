@@ -10,23 +10,90 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Clean user accounts
+/// Clean user accounts — username + email and/or phone, verified via one-time code
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  passwordHash String
-  weightUnit   String   @default("lb") // "lb" | "kg"
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  /// Unique login handle (lowercase). Preferred sign-in identifier.
+  username      String?   @unique
+  email         String?   @unique
+  phone         String?   @unique // E.164 e.g. +15551234567
+  name          String?
+  /// Optional legacy password; primary auth is OTP
+  passwordHash  String?
+  emailVerified DateTime?
+  phoneVerified DateTime?
+  weightUnit    String    @default("lb") // "lb" | "kg"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  trainingLogs TrainingLog[]
-  bodyMetrics  BodyMetric[]
-  supplements  SupplementLog[]
-  compounds    CompoundLog[]
-  notes        Note[]
-  reminders    Reminder[]
-  chatMessages ChatMessage[]
+  trainingLogs   TrainingLog[]
+  bodyMetrics    BodyMetric[]
+  supplements    SupplementLog[]
+  compounds      CompoundLog[]
+  notes          Note[]
+  reminders      Reminder[]
+  chatMessages   ChatMessage[]
+  stackEducation UserStackEducation[]
+  disciplineCheckIns DisciplineCheckIn[]
+  mindReflections    MindReflection[]
+}
+
+/// Daily discipline habit check-ins (Mind pillar)
+model DisciplineCheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Catalog key e.g. "meditation", "hard-task", "learning-time"
+  habitKey  String
+  /// Calendar day (date only, noon UTC-safe via app)
+  date      DateTime
+  completed Boolean  @default(true)
+  /// Optional duration for timed practices (minutes)
+  minutes   Int?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, habitKey, date])
+  @@index([userId, date])
+  @@index([userId, habitKey])
+}
+
+/// Optional short end-of-day mind reflections
+model MindReflection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  /// "discipline" | "learning" | "general"
+  kind      String   @default("general")
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// One-time verification codes for email or phone auth
+model AuthOtp {
+  id        String    @id @default(cuid())
+  /// Normalized contact (email lowercased OR E.164 phone)
+  contact   String
+  /// "email" | "phone"
+  channel   String
+  /// "login" | "signup"
+  purpose   String
+  /// Optional display name captured at signup request
+  name      String?
+  /// Username chosen at signup (stored for account creation after verify)
+  username  String?
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([contact, purpose, createdAt])
+  @@index([expiresAt])
 }
 
 /// Training session logs
@@ -119,4 +186,51 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// Cached educational pages for logged supplements / compounds (shared globally by name)
+model SubstanceEducation {
+  id             String   @id @default(cuid())
+  /// "supplement" | "compound"
+  kind           String
+  /// Display name as first logged (title case preserved lightly)
+  name           String
+  /// Lowercase trimmed key for lookup
+  nameNormalized String
+  slug           String
+  /// "ready" | "generating" | "failed"
+  status         String   @default("generating")
+  /// JSON: { whatItIs, mechanism, commonUses[], importantToKnow[], disclaimer, extra?, anabolicAndrogenicRatio? }
+  contentJson    String   @default("{}")
+  model          String?
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([kind, nameNormalized])
+  @@unique([kind, slug])
+  @@index([kind, status])
+}
+
+/// Per-user educational stack analysis (synergies + stack observations)
+/// Recomputed when the set of logged substance names changes.
+model UserStackEducation {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Stable hash of sorted kind:normalizedName pairs
+  substancesHash  String
+  /// Snapshot of substance labels used for this analysis
+  substancesJson  String   @default("[]")
+  /// "ready" | "generating" | "failed"
+  status          String   @default("generating")
+  /// JSON: StackEducationContent
+  contentJson     String   @default("{}")
+  model           String?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, substancesHash])
+  @@index([userId, updatedAt])
 }

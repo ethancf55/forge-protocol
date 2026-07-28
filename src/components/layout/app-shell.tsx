@@ -7,19 +7,34 @@ import {
   NotebookPen,
   LineChart,
   BookOpen,
+  Brain,
   Bell,
   MessageSquare,
   LogOut,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "next-auth/react";
 
-const nav = [
+/** Full nav (desktop sidebar) */
+const navDesktop = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/log", label: "Log", icon: NotebookPen },
   { href: "/history", label: "History", icon: LineChart },
+  { href: "/mind", label: "Mind", icon: Brain },
   { href: "/guides", label: "Guides", icon: BookOpen },
+  { href: "/learn", label: "Substances", icon: GraduationCap },
   { href: "/reminders", label: "Reminders", icon: Bell },
+  { href: "/chat", label: "AI", icon: MessageSquare },
+];
+
+/** Primary mobile bottom nav — Mind as equal pillar */
+const navMobile = [
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/log", label: "Log", icon: NotebookPen },
+  { href: "/history", label: "History", icon: LineChart },
+  { href: "/mind", label: "Mind", icon: Brain },
+  { href: "/guides", label: "Guides", icon: BookOpen },
   { href: "/chat", label: "AI", icon: MessageSquare },
 ];
 
@@ -50,8 +65,8 @@ export function AppShell({
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 p-3">
-          {nav.map((item) => {
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+          {navDesktop.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
@@ -121,7 +136,7 @@ export function AppShell({
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-[#0f0f12]/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-6 gap-0.5 px-1 py-2">
-          {nav.map((item) => {
+          {navMobile.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
@@ -129,7 +144,7 @@ export function AppShell({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-medium transition",
+                  "flex flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[10px] font-medium transition",
                   active
                     ? "text-orange-400"
                     : "text-zinc-500 hover:text-zinc-300"
@@ -138,11 +153,7 @@ export function AppShell({
                 <Icon
                   className={cn("h-5 w-5", active && "stroke-[2.25px]")}
                 />
-                {item.label === "Dashboard"
-                  ? "Home"
-                  : item.label === "Reminders"
-                    ? "Remind"
-                    : item.label}
+                {item.label}
               </Link>
             );
           })}

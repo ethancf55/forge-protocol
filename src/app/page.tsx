@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 export default async function LandingPage() {
   const session = await auth();
-  if (session?.user) redirect("/dashboard");
+  if (session?.user?.id) redirect("/dashboard");
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[#0b0b0d]">

@@ -1,41 +1,64 @@
 import Link from "next/link";
-import { format } from "date-fns";
+import { format, startOfDay, subDays } from "date-fns";
 import { Card, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { startOfDay, subDays } from "date-fns";
 
 export default async function DashboardPage() {
   const user = await requireUser();
   const since = subDays(startOfDay(new Date()), 13);
   const firstName = user.name?.split(" ")[0] || "athlete";
+  const userId = user.id;
 
-  const [sessions14d, weights, notes14d, reminders, recentTraining] =
-    await Promise.all([
-      prisma.trainingLog.count({
-        where: { userId: user.id, date: { gte: since } },
-      }),
-      prisma.bodyMetric.findMany({
-        where: { userId: user.id },
-        orderBy: { date: "desc" },
-        take: 1,
-      }),
-      prisma.note.count({
-        where: { userId: user.id, date: { gte: since } },
-      }),
-      prisma.reminder.findMany({
-        where: { userId: user.id, enabled: true },
-        orderBy: { hourLocal: "asc" },
-        take: 3,
-      }),
-      prisma.trainingLog.findMany({
-        where: { userId: user.id },
-        orderBy: { date: "desc" },
-        take: 4,
-      }),
-    ]);
+  // Safe defaults so the page never crashes if a query fails or data is empty
+  let sessions14d = 0;
+  let notes14d = 0;
+  let latestWeight: { weight: number; unit: string } | null = null;
+  let reminders: { id: string; title: string; hourLocal: number }[] = [];
+  let recentTraining: {
+    id: string;
+    title: string;
+    date: Date;
+    durationMin: number | null;
+  }[] = [];
 
-  const latestWeight = weights[0];
+  try {
+    const [sessionCount, weights, noteCount, reminderRows, trainingRows] =
+      await Promise.all([
+        prisma.trainingLog.count({
+          where: { userId, date: { gte: since } },
+        }),
+        prisma.bodyMetric.findMany({
+          where: { userId },
+          orderBy: { date: "desc" },
+          take: 1,
+        }),
+        prisma.note.count({
+          where: { userId, date: { gte: since } },
+        }),
+        prisma.reminder.findMany({
+          where: { userId, enabled: true },
+          orderBy: { hourLocal: "asc" },
+          take: 3,
+        }),
+        prisma.trainingLog.findMany({
+          where: { userId },
+          orderBy: { date: "desc" },
+          take: 4,
+        }),
+      ]);
+
+    sessions14d = sessionCount;
+    notes14d = noteCount;
+    latestWeight = weights[0]
+      ? { weight: weights[0].weight, unit: weights[0].unit }
+      : null;
+    reminders = reminderRows;
+    recentTraining = trainingRows;
+  } catch (err) {
+    console.error("[dashboard] failed to load stats:", err);
+  }
+
   const empty = sessions14d === 0 && !latestWeight && notes14d === 0;
 
   return (
@@ -54,7 +77,6 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI strip */}
       <div className="grid grid-cols-3 gap-2.5 md:gap-3">
         <Stat label="Sessions · 14d" value={String(sessions14d)} />
         <Stat
@@ -68,7 +90,6 @@ export default async function DashboardPage() {
         <Stat label="Notes · 14d" value={String(notes14d)} />
       </div>
 
-      {/* Empty-state hero */}
       {empty && (
         <Card className="border-orange-500/20 bg-gradient-to-br from-orange-500/[0.08] to-transparent">
           <p className="text-sm font-semibold text-zinc-100">
@@ -101,15 +122,15 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* Quick log */}
       <Card>
         <CardTitle className="mb-3 text-sm">Quick log</CardTitle>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
           {[
             { href: "/log?tab=training", label: "Training" },
             { href: "/log?tab=weight", label: "Bodyweight" },
             { href: "/log?tab=supplements", label: "Supplements" },
             { href: "/log?tab=compounds", label: "Compounds" },
+            { href: "/mind", label: "Mind" },
           ].map((item) => (
             <Link
               key={item.href}
@@ -193,7 +214,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Module map — foundation orientation */}
       <Card className="border-white/[0.06]">
         <CardTitle className="mb-3 text-sm">Modules</CardTitle>
         <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400 md:grid-cols-3">
@@ -201,7 +221,9 @@ export default async function DashboardPage() {
             ["Dashboard", "Snapshot & shortcuts"],
             ["Log", "Training · metrics · supps · compounds · notes"],
             ["History", "Charts & recent activity"],
-            ["Guides", "Static education & starter structure"],
+            ["Mind", "Discipline check-ins + learning paths"],
+            ["Guides", "Long-form training & education"],
+            ["Substances", "AI education for logged compounds/supps"],
             ["Reminders", "Simple daily anchors"],
             ["AI", "Org + education only — no dosing"],
           ].map(([title, desc]) => (
