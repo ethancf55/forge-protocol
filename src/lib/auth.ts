@@ -4,15 +4,34 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { verifyOtp } from "@/lib/otp";
 import { parseContact } from "@/lib/contact";
-import { parseUsername } from "@/lib/username";
 
 const otpSchema = z.object({
   contact: z.string().min(3),
   code: z.string().min(4).max(12),
   purpose: z.enum(["login", "signup"]),
-  name: z.string().optional(),
-  username: z.string().optional(),
 });
+
+function displayName(user: {
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}): string {
+  if (user.name?.trim()) return user.name.trim();
+  if (user.email) return user.email;
+  if (user.phone) return user.phone;
+  return "Athlete";
+}
+
+function defaultNameFromContact(
+  channel: "email" | "phone",
+  contact: string
+): string {
+  if (channel === "email") {
+    const local = contact.split("@")[0]?.trim();
+    return local || "Athlete";
+  }
+  return "Athlete";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -31,8 +50,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         contact: { label: "Contact", type: "text" },
         code: { label: "Code", type: "text" },
         purpose: { label: "Purpose", type: "text" },
-        name: { label: "Name", type: "text" },
-        username: { label: "Username", type: "text" },
       },
       async authorize(raw) {
         const parsed = otpSchema.safeParse(raw);
@@ -52,29 +69,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const contact = contactParsed.contact;
 
         if (parsed.data.purpose === "signup") {
-          const usernameParsed = parseUsername(
-            parsed.data.username || verified.username || ""
-          );
-          if (!usernameParsed.ok) return null;
-
-          const takenUser = await prisma.user.findUnique({
-            where: { username: usernameParsed.username },
-          });
-          if (takenUser) return null;
-
           const existingContact =
             channel === "email"
               ? await prisma.user.findUnique({ where: { email: contact } })
               : await prisma.user.findUnique({ where: { phone: contact } });
           if (existingContact) return null;
 
-          const name =
-            (parsed.data.name || verified.name || "").trim() ||
-            usernameParsed.username;
+          const name = defaultNameFromContact(channel, contact);
 
           const user = await prisma.user.create({
             data: {
-              username: usernameParsed.username,
               name,
               email: channel === "email" ? contact : null,
               phone: channel === "phone" ? contact : null,
@@ -86,7 +90,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return {
             id: user.id,
             email: user.email ?? undefined,
-            name: user.username || user.name,
+            name: displayName(user),
           };
         }
 
@@ -113,7 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return {
           id: user.id,
           email: user.email ?? undefined,
-          name: user.username || user.name,
+          name: displayName(user),
         };
       },
     }),
@@ -138,13 +142,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const exists = await prisma.user.findUnique({
             where: { id: token.sub },
-            select: { id: true, name: true, email: true, username: true },
+            select: { id: true, name: true, email: true, phone: true },
           });
           token.checkedAt = Date.now();
           if (!exists) {
             return { error: "UserNotFound" };
           }
-          token.name = exists.username || exists.name;
+          token.name = displayName(exists);
           token.email = exists.email;
         } catch {
           /* keep session on transient DB errors */

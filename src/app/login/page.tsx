@@ -11,14 +11,27 @@ export default async function LoginPage({
   searchParams: Promise<{ reason?: string }>;
 }) {
   const { reason } = await searchParams;
-  const session = await auth();
 
-  let dbError: string | null = null;
+  let dbError: string | null =
+    reason === "db"
+      ? "Cannot reach the database right now. Try again in a moment, or claim/recreate the Prisma database if it expired."
+      : null;
 
-  if (session?.user?.id && reason !== "stale") {
+  let sessionUserId: string | undefined;
+  try {
+    const session = await auth();
+    sessionUserId = session?.user?.id;
+  } catch (err) {
+    console.error("[login] auth()", err);
+    dbError =
+      dbError ||
+      "Sign-in is temporarily unavailable (auth service). Refresh in a moment.";
+  }
+
+  if (!dbError && sessionUserId && reason !== "stale") {
     try {
       const exists = await prisma.user.findUnique({
-        where: { id: session.user.id },
+        where: { id: sessionUserId },
         select: { id: true },
       });
       if (exists) redirect("/dashboard");
@@ -26,7 +39,7 @@ export default async function LoginPage({
     } catch {
       // DB unreachable — still show login instead of crashing
       dbError =
-        "Cannot reach the database right now. Check DATABASE_URL / that your Prisma DB is claimed and running, then restart the dev server.";
+        "Cannot reach the database right now. The temporary Prisma DB may have expired — claim it or provision a new one, update DATABASE_URL on Vercel, and redeploy.";
     }
   }
 

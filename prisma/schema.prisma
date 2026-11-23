@@ -10,10 +10,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Clean user accounts — username + email and/or phone, verified via one-time code
+/// Clean user accounts — name + email and/or phone, verified via one-time code
 model User {
   id            String    @id @default(cuid())
-  /// Unique login handle (lowercase). Preferred sign-in identifier.
+  /// Legacy optional handle (no longer required for auth)
   username      String?   @unique
   email         String?   @unique
   phone         String?   @unique // E.164 e.g. +15551234567

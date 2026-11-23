@@ -11,23 +11,32 @@ export default async function SignupPage({
   searchParams: Promise<{ reason?: string }>;
 }) {
   const { reason } = await searchParams;
-  const session = await auth();
 
   let dbError: string | null = null;
   let stale: string | undefined =
-    reason === "stale" ? "stale" : undefined;
+    reason === "stale" || reason === "db" ? reason : undefined;
 
-  if (session?.user?.id && reason !== "stale") {
+  let sessionUserId: string | undefined;
+  try {
+    const session = await auth();
+    sessionUserId = session?.user?.id;
+  } catch (err) {
+    console.error("[signup] auth()", err);
+    dbError =
+      "Sign-up is temporarily unavailable (auth service). Refresh in a moment.";
+  }
+
+  if (!dbError && sessionUserId && reason !== "stale") {
     try {
       const exists = await prisma.user.findUnique({
-        where: { id: session.user.id },
+        where: { id: sessionUserId },
         select: { id: true },
       });
       if (exists) redirect("/dashboard");
       stale = "stale";
     } catch {
       dbError =
-        "Cannot reach the database right now. Check DATABASE_URL / that your Prisma DB is claimed and running, then restart the dev server.";
+        "Cannot reach the database right now. The temporary Prisma DB may have expired — claim it or provision a new one, update DATABASE_URL on Vercel, and redeploy.";
     }
   }
 

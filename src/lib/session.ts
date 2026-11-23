@@ -14,7 +14,7 @@ export async function requireUser() {
   try {
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, email: true, name: true, username: true },
+      select: { id: true, email: true, name: true, phone: true },
     });
 
     if (!user) {
@@ -25,7 +25,12 @@ export async function requireUser() {
     return {
       id: user.id,
       email: user.email ?? session.user.email ?? null,
-      name: user.username || user.name || session.user.name || null,
+      name:
+        user.name ||
+        user.email ||
+        user.phone ||
+        session.user.name ||
+        null,
     };
   } catch (err) {
     console.error("[requireUser] database unreachable", err);

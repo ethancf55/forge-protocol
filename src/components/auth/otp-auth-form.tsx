@@ -17,8 +17,6 @@ type Step = "contact" | "code";
 export function OtpAuthForm({ mode }: { mode: Mode }) {
   const [channel, setChannel] = useState<Channel>("email");
   const [step, setStep] = useState<Step>("contact");
-  const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [contactInput, setContactInput] = useState("");
   const [code, setCode] = useState("");
   const [pending, start] = useTransition();
@@ -33,8 +31,8 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
     mode === "signup" ? "Create your account" : "Welcome back";
   const subtitle =
     mode === "signup"
-      ? "Pick a username, add email or phone, then verify with a code."
-      : "Sign in with your username. We’ll send a code to your email or phone.";
+      ? "Enter your email or phone, then verify with a code."
+      : "Enter your email or phone. We’ll send a one-time code.";
 
   const contactPlaceholder =
     channel === "email" ? "you@email.com" : "(555) 123-4567";
@@ -53,12 +51,8 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
     setInfo(null);
     const fd = new FormData();
     fd.set("purpose", mode);
-    fd.set("username", username);
-    if (mode === "signup") {
-      fd.set("channel", channel);
-      fd.set("contact", contactInput);
-      fd.set("name", name);
-    }
+    fd.set("channel", channel);
+    fd.set("contact", contactInput);
 
     start(async () => {
       const res = await requestOtpAction(fd);
@@ -69,14 +63,13 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
       setOtpMeta(res);
       setStep("code");
       setCode("");
-      const who = res.username ? `@${res.username}` : "you";
-      const base = `Code for ${who} sent to ${res.masked} via ${
+      const via =
         res.delivery === "sms"
           ? "text"
           : res.delivery === "email"
             ? "email"
-            : "dev channel"
-      }. Expires in ${Math.round(res.expiresInSec / 60)} min.`;
+            : "dev channel";
+      const base = `Code sent to ${res.masked} via ${via}. Expires in ${Math.round(res.expiresInSec / 60)} min.`;
       setInfo(res.devCode ? `${base} Dev code: ${res.devCode}` : base);
     });
   }
@@ -91,8 +84,6 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
     fd.set("purpose", mode);
     fd.set("contact", otpMeta.contact);
     fd.set("code", code);
-    fd.set("username", otpMeta.username || username);
-    if (mode === "signup") fd.set("name", name);
 
     start(async () => {
       try {
@@ -118,8 +109,7 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
         </p>
       </div>
 
-      {/* Signup only: email vs phone for contact */}
-      {mode === "signup" && step === "contact" ? (
+      {step === "contact" ? (
         <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-zinc-950/60 p-1">
           {(
             [
@@ -160,70 +150,22 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
 
       {step === "contact" ? (
         <div className="space-y-3.5">
-          {mode === "signup" ? (
-            <Field label="Name">
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ethan"
-                autoComplete="name"
-                required
-              />
-            </Field>
-          ) : null}
-
-          <Field label="Username">
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-zinc-500">
-                @
-              </span>
-              <Input
-                value={username}
-                onChange={(e) =>
-                  setUsername(
-                    e.target.value
-                      .toLowerCase()
-                      .replace(/[^a-z0-9_]/g, "")
-                      .slice(0, 24)
-                  )
-                }
-                placeholder="your_handle"
-                autoComplete="username"
-                className="pl-8"
-                required
-              />
-            </div>
-            <p className="mt-1.5 text-[11px] text-zinc-600">
-              3–24 characters · letters, numbers, underscores
-            </p>
+          <Field label={channel === "email" ? "Email" : "Phone number"}>
+            <Input
+              value={contactInput}
+              onChange={(e) => setContactInput(e.target.value)}
+              placeholder={contactPlaceholder}
+              type={channel === "email" ? "email" : "tel"}
+              autoComplete={channel === "email" ? "email" : "tel"}
+              inputMode={channel === "email" ? "email" : "tel"}
+              required
+            />
           </Field>
 
-          {mode === "signup" ? (
-            <Field label={channel === "email" ? "Email" : "Phone number"}>
-              <Input
-                value={contactInput}
-                onChange={(e) => setContactInput(e.target.value)}
-                placeholder={contactPlaceholder}
-                type={channel === "email" ? "email" : "tel"}
-                autoComplete={channel === "email" ? "email" : "tel"}
-                inputMode={channel === "email" ? "email" : "tel"}
-                required
-              />
-            </Field>
-          ) : (
-            <p className="text-[11px] leading-relaxed text-zinc-500">
-              We’ll send a verification code to the email or phone linked to
-              this username.
-            </p>
-          )}
-
-          {mode === "signup" ? (
-            <p className="text-[11px] leading-relaxed text-zinc-500">
-              We’ll send a 6-digit code to verify your{" "}
-              {channel === "email" ? "email" : "phone"}. Use your username to
-              sign in next time.
-            </p>
-          ) : null}
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            We’ll send a 6-digit code to this{" "}
+            {channel === "email" ? "email" : "phone"}.
+          </p>
 
           <Button
             type="button"
@@ -239,8 +181,7 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
         <div className="space-y-3.5">
           <div className="rounded-xl border border-white/10 bg-zinc-950/50 px-3.5 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-              {otpMeta?.username ? `@${otpMeta.username}` : "Account"} · code
-              via {deliveryLabel}
+              Code via {deliveryLabel}
             </p>
             <p className="mt-1 text-sm text-zinc-200">
               {otpMeta?.masked || contactInput}
@@ -307,7 +248,7 @@ export function OtpAuthForm({ mode }: { mode: Mode }) {
           <>
             Already have an account?{" "}
             <Link href="/login" className="text-orange-400 hover:underline">
-              Sign in with username
+              Sign in
             </Link>
           </>
         ) : (
